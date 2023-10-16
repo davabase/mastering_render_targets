@@ -1,0 +1,127 @@
+function init(self)
+	-- Enable input.
+	msg.post(".", "acquire_input_focus")
+
+	-- Calculate the bounding box.
+	local position = go.get_position()
+	local scale = go.get_scale()
+	self.left = position.x - scale.x / 2
+	self.right = position.x + scale.x / 2
+	self.bottom = position.y - scale.y / 2
+	self.top = position.y + scale.y / 2
+
+	-- Send the parameters to the render script.
+	msg.post('@render:', 'update_window_box', { left = self.left, right = self.right, bottom = self.bottom, top = self.top })
+
+	-- Initialize variables.
+	self.dragging = false
+	self.mouse_position = vmath.vector3()
+	self.can_scale_left = false
+	self.can_scale_right = false
+	self.can_scale_bottom = false
+	self.can_scale_top = false
+	self.scaling_left = false
+	self.scaling_right = false
+	self.scaling_bottom = false
+	self.scaling_top = false
+end
+
+function update(self, dt)
+	-- Drag.
+	if self.dragging then
+		go.set_position(self.mouse_position - self.offset)
+	end
+
+	-- Scale.
+	local scale = go.get_scale()
+	if self.scaling_left then
+		local scale_offset = self.mouse_position.x - self.left
+		go.set_scale(vmath.vector3(math.max(1, scale.x - scale_offset), scale.y, 1))
+	elseif self.scaling_right then
+		local scale_offset = self.mouse_position.x - self.right
+		go.set_scale(vmath.vector3(math.max(1, scale.x + scale_offset), scale.y, 1))
+	end
+
+	scale = go.get_scale()
+	if self.scaling_bottom then
+		local scale_offset = self.mouse_position.y - self.bottom
+		go.set_scale(vmath.vector3(scale.x, math.max(1, scale.y - scale_offset), 1))
+	elseif self.scaling_top then
+		local scale_offset = self.mouse_position.y - self.top
+		go.set_scale(vmath.vector3(scale.x, math.max(1, scale.y + scale_offset), 1))
+	end
+
+	-- Calculate the bounding box.
+	local position = go.get_position()
+	scale = go.get_scale()
+	self.left = position.x - scale.x / 2
+	self.right = position.x + scale.x / 2
+	self.bottom = position.y - scale.y / 2
+	self.top = position.y + scale.y / 2
+
+	-- Send the parameters to the render script.
+	if self.scaling_left or self.scaling_right or self.scaling_bottom or self.scaling_top or self.dragging then
+		msg.post('@render:', 'update_window_box', { left = self.left, right = self.right, bottom = self.bottom, top = self.top })
+	end
+
+	-- Draw lines around the window with a 1 pixel border.
+	local red = vmath.vector4(1, 0, 0, 1)
+	local blue = vmath.vector4(0, 0, 1, 1)
+	local left_color = red
+	local right_color = red
+	local bottom_color = red
+	local top_color = red
+	if self.can_scale_left then left_color = blue end
+	if self.can_scale_right then right_color = blue end
+	if self.can_scale_bottom then bottom_color = blue end
+	if self.can_scale_top then top_color = blue end
+	msg.post("@render:", "draw_line", { start_point = vmath.vector3(self.left - 1, self.bottom - 1, 0), end_point = vmath.vector3(self.left - 1, self.top + 1, 0), color = left_color })
+	msg.post("@render:", "draw_line", { start_point = vmath.vector3(self.left - 1, self.top + 1, 0), end_point = vmath.vector3(self.right + 1, self.top + 1, 0), color = top_color })
+	msg.post("@render:", "draw_line", { start_point = vmath.vector3(self.right + 1, self.top + 1, 0), end_point = vmath.vector3(self.right + 1, self.bottom - 1, 0), color = right_color })
+	msg.post("@render:", "draw_line", { start_point = vmath.vector3(self.right + 1, self.bottom - 1, 0), end_point = vmath.vector3(self.left - 1, self.bottom - 1, 0), color = bottom_color })
+end
+
+function on_input(self, action_id, action)
+	if action.x and action.y then
+		-- Save the mouse position as a vector.
+		self.mouse_position = vmath.vector3(action.x, action.y, 0)
+
+		-- Check if we are close to the edges to select them for scaling.
+		local scale_distance = 6
+		self.can_scale_left = (math.abs(action.x - self.left) < scale_distance and action.y > self.bottom - scale_distance and action.y < self.top + scale_distance) or self.scaling_left
+		self.can_scale_right = (math.abs(action.x - self.right) < scale_distance and action.y > self.bottom - scale_distance and action.y < self.top + scale_distance) or self.scaling_right
+		self.can_scale_bottom = (math.abs(action.y - self.bottom) < scale_distance and action.x > self.left - scale_distance and action.x < self.right + scale_distance) or self.scaling_bottom
+		self.can_scale_top = (math.abs(action.y - self.top) < scale_distance and action.x > self.left - scale_distance and action.x < self.right + scale_distance) or self.scaling_top
+
+		-- Check if we have clicked.
+		if action_id == hash("mouse_button_left") then
+			if action.pressed then
+				-- Set scaling if we are close to an edge.
+				if self.can_scale_left then
+					self.scaling_left = true
+				elseif self.can_scale_right then
+					self.scaling_right = true
+				end
+				if self.can_scale_bottom then
+					self.scaling_bottom = true
+				elseif self.can_scale_top then
+					self.scaling_top = true
+				end
+				-- Set dragging if we are not scaling and we are inside the window.
+				if not self.scaling_left and not self.scaling_right and not self.scaling_bottom and not self.scaling_top and
+				(action.x > self.left and action.x < self.right and action.y > self.bottom and action.y < self.top) then
+					-- If we are inside the window calculate the offset and set dragging.
+					self.offset = self.mouse_position - go.get_position()
+					self.dragging = true
+				end
+			elseif action.released then
+				-- If we have released the mouse unset dragging and scaling.
+				self.dragging = false
+				self.scaling_left = false
+				self.scaling_right = false
+				self.scaling_bottom = false
+				self.scaling_top = false
+			end
+		end
+	end
+end
