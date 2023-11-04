@@ -30,12 +30,19 @@ Find it [here.](part_4/)
 * Add controls to change the scaling of the render window.
 
 Learn more about the Defold game engine here:
+
 https://defold.com
+
 https://github.com/defold/defold
+
 https://forum.defold.com
 
 Useful references for rendering in Defold:
+
 https://defold.com/manuals/render
+
 https://defold.com/manuals/material
+
 https://defold.com/manuals/shader
+
 https://defold.com/tutorials/shadertoy
